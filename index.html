@@ -6,15 +6,17 @@
     <title>Admin Dashboard</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <style>
         body { font-family: 'Poppins', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        select { -webkit-appearance: none; appearance: none; text-align: center; }
+        /* Smooth animation for cards */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="bg-gray-100 flex justify-center antialiased">
@@ -31,7 +33,7 @@
             </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto no-scrollbar px-5 py-6 space-y-4" id="orderContainer">
+        <div class="flex-1 overflow-y-auto no-scrollbar px-5 py-6 pb-28 space-y-4" id="orderContainer">
             
             <div id="loader" class="flex flex-col items-center justify-center py-20 text-gray-400">
                 <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
@@ -40,105 +42,201 @@
 
         </div>
 
+        <div class="absolute bottom-0 left-0 w-full bg-white border-t border-gray-100 flex justify-between items-center px-4 py-3 rounded-b-[2rem] z-20 shadow-[0_-4px_15px_rgba(0,0,0,0.05)]">
+            <button onclick="setTab('Pending')" id="tab-Pending" class="flex flex-col items-center text-blue-600 w-1/3 transition-colors duration-300 active:scale-95">
+                <i class="fas fa-clock text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Pending</span>
+            </button>
+            <button onclick="setTab('Confirmed')" id="tab-Confirmed" class="flex flex-col items-center text-gray-400 hover:text-blue-400 w-1/3 transition-colors duration-300 active:scale-95">
+                <i class="fas fa-check-circle text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Confirmed</span>
+            </button>
+            <button onclick="setTab('Delivered')" id="tab-Delivered" class="flex flex-col items-center text-gray-400 hover:text-blue-400 w-1/3 transition-colors duration-300 active:scale-95">
+                <i class="fas fa-box-open text-xl mb-1"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Delivered</span>
+            </button>
+        </div>
+
+        <div id="toastMessage" class="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-5 py-2.5 rounded-full text-xs font-medium shadow-xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center space-x-2">
+            <i class="fas fa-info-circle text-blue-400"></i>
+            <span id="toastText">Status Updated!</span>
+        </div>
+
     </div>
 
 <script>
-    // DHYAN DEIN: Yahan apna NAYA Google Apps Script URL paste karein
+    // DHYAN DEIN: Yahan apna Google Apps Script URL paste karein
     const scriptURL = 'https://script.google.com/macros/s/AKfycbw2Z-5nrbDkbhCxvRi7uuudnz1wkZi9Rz1gURfWUJUcLkZ5FPWUNVkN7XeC0GnO5TPk1A/exec';
     
     const orderContainer = document.getElementById('orderContainer');
     const refreshIcon = document.getElementById('refreshIcon');
 
-    // Rang decide karne wala function (Item ke hisaab se badge color)
+    let allOrders = []; // Saare orders yahan save honge
+    let currentTab = 'Pending'; // By default kaunsa tab khula rahega
+
+    // Tab switch karne ka logic
+    function setTab(tabName) {
+        currentTab = tabName;
+        const tabs = ['Pending', 'Confirmed', 'Delivered'];
+        
+        // Colors change karna (Active vs Inactive)
+        tabs.forEach(tab => {
+            const btn = document.getElementById(`tab-${tab}`);
+            if (tab === tabName) {
+                btn.classList.replace('text-gray-400', 'text-blue-600');
+                btn.classList.remove('hover:text-blue-400');
+            } else {
+                btn.classList.replace('text-blue-600', 'text-gray-400');
+                btn.classList.add('hover:text-blue-400');
+            }
+        });
+
+        // Orders wapas render karna naye tab ke hisaab se
+        renderOrders();
+    }
+
+    // Badge Color
     function getBadgeColor(itemType) {
         if(itemType === 'Food') return 'bg-orange-100 text-orange-700 border-orange-200';
         if(itemType === 'Electronics') return 'bg-blue-100 text-blue-700 border-blue-200';
         if(itemType === 'Fragile') return 'bg-red-100 text-red-700 border-red-200';
-        return 'bg-gray-100 text-gray-700 border-gray-200'; // Standard
+        return 'bg-gray-100 text-gray-700 border-gray-200'; 
     }
 
-    // Data fetch karne ka function
-    function fetchOrders() {
-        // Loading animation shuru
-        refreshIcon.classList.add('fa-spin');
-        orderContainer.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-20 text-gray-400">
-                <i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
-                <p class="text-sm font-medium">Loading live orders...</p>
-            </div>`;
+    // Status Box Color
+    function getStatusColor(status) {
+        if(status === 'Pending') return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+        if(status === 'Confirmed') return 'bg-blue-100 text-blue-700 border-blue-300';
+        if(status === 'Delivered') return 'bg-green-100 text-green-700 border-green-300';
+        if(status === 'Cancelled') return 'bg-red-100 text-red-700 border-red-300';
+        return 'bg-gray-100 text-gray-700 border-gray-300';
+    }
 
+    // Status change hone par kya hoga
+    function handleStatusChange(selectElement, index) {
+        const newStatus = selectElement.value;
+        allOrders[index].Status = newStatus; // Local memory mein status update
+        
+        // Notification dikhana
+        const toast = document.getElementById('toastMessage');
+        document.getElementById('toastText').innerText = `Order moved to ${newStatus}`;
+        toast.classList.remove('opacity-0', 'translate-y-4');
+        
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-4');
+        }, 2500);
+
+        // 0.5 second baad screen se hatakar naye tab mein bhej dena
+        setTimeout(() => {
+            renderOrders();
+        }, 500);
+    }
+
+    // Orders HTML mein banane ka function (Naya Logic)
+    function renderOrders() {
+        orderContainer.innerHTML = ''; 
+
+        // Sirf wahi order chhanto (filter) jo active tab se match karte hain
+        // Note: Agar 'Cancelled' hai toh wo Pending mein bhi nahi dikhega jab tak uska tab na ho
+        const filteredOrders = allOrders.filter(order => order.Status === currentTab);
+
+        if(filteredOrders.length === 0) {
+            orderContainer.innerHTML = `
+                <div class="text-center py-20 text-gray-400 fade-in">
+                    <i class="fas fa-folder-open text-5xl mb-4 opacity-30"></i>
+                    <p class="font-medium">No ${currentTab} orders</p>
+                    <p class="text-xs mt-1">Is category mein koi order nahi hai.</p>
+                </div>`;
+            return;
+        }
+
+        filteredOrders.forEach(order => {
+            let orderDate = new Date(order.Date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
+            const badgeClass = getBadgeColor(order.ItemType);
+            const statusColor = getStatusColor(order.Status);
+
+            const cardHTML = `
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow relative fade-in">
+                    
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="font-bold text-gray-900 text-lg">${order.Naam}</h3>
+                            <p class="text-xs text-gray-400"><i class="far fa-clock mr-1"></i>${orderDate}</p>
+                        </div>
+                        <span class="px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${badgeClass}">
+                            ${order.ItemType}
+                        </span>
+                    </div>
+
+                    <hr class="border-gray-50 my-3">
+
+                    <div class="space-y-2 text-sm mb-4">
+                        <div class="flex items-start text-gray-600">
+                            <i class="fas fa-phone-alt mt-1 mr-3 text-gray-400 w-4"></i>
+                            <a href="tel:${order.Phone}" class="font-medium text-blue-600">${order.Phone}</a>
+                        </div>
+                        <div class="flex items-start text-gray-600">
+                            <i class="fas fa-map-marker-alt mt-1 mr-3 text-gray-400 w-4"></i>
+                            <div>
+                                <p>${order.Address}</p>
+                                <p class="text-xs text-gray-400 mt-0.5">Near: ${order.Landmark}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start text-gray-600">
+                            <i class="fas fa-city mt-1 mr-3 text-gray-400 w-4"></i>
+                            <p>${order.City}, ${order.State} - <span class="font-medium">${order.Pincode}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center mt-2">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Update Status:</span>
+                        
+                        <select onchange="handleStatusChange(this, ${order.originalIndex})" class="text-xs font-bold px-3 py-1.5 rounded-full border outline-none cursor-pointer transition-colors w-28 ${statusColor}">
+                            <option value="Pending" ${order.Status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="Confirmed" ${order.Status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+                            <option value="Delivered" ${order.Status === 'Delivered' ? 'selected' : ''}>Delivered</option>
+                            <option value="Cancelled" ${order.Status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                    </div>
+
+                </div>
+            `;
+            orderContainer.innerHTML += cardHTML;
+        });
+    }
+
+    // Data fetch karna
+    function fetchOrders() {
+        refreshIcon.classList.add('fa-spin');
+        
         fetch(scriptURL)
             .then(response => response.json())
             .then(data => {
-                orderContainer.innerHTML = ''; // Loader hata do
-                refreshIcon.classList.remove('fa-spin'); // Sync icon roko
+                refreshIcon.classList.remove('fa-spin'); 
                 
-                if(data.length === 0) {
-                    orderContainer.innerHTML = `
-                        <div class="text-center py-20 text-gray-400">
-                            <i class="fas fa-box-open text-5xl mb-4 opacity-50"></i>
-                            <p>Abhi tak koi order nahi aaya hai.</p>
-                        </div>`;
-                    return;
-                }
-
-                // Har order ke liye ek Card banana
-                data.forEach(order => {
-                    // Date format theek karna
-                    let orderDate = new Date(order.Date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
-
-                    const badgeClass = getBadgeColor(order.ItemType);
-
-                    const cardHTML = `
-                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow relative">
-                            
-                            <div class="flex justify-between items-start mb-3">
-                                <div>
-                                    <h3 class="font-bold text-gray-900 text-lg">${order.Naam}</h3>
-                                    <p class="text-xs text-gray-400"><i class="far fa-clock mr-1"></i>${orderDate}</p>
-                                </div>
-                                <span class="px-3 py-1 rounded-full text-xs font-semibold border ${badgeClass}">
-                                    ${order.ItemType}
-                                </span>
-                            </div>
-
-                            <hr class="border-gray-50 my-3">
-
-                            <div class="space-y-2 text-sm">
-                                <div class="flex items-start text-gray-600">
-                                    <i class="fas fa-phone-alt mt-1 mr-3 text-gray-400 w-4"></i>
-                                    <a href="tel:${order.Phone}" class="font-medium text-blue-600">${order.Phone}</a>
-                                </div>
-                                <div class="flex items-start text-gray-600">
-                                    <i class="fas fa-map-marker-alt mt-1 mr-3 text-gray-400 w-4"></i>
-                                    <div>
-                                        <p>${order.Address}</p>
-                                        <p class="text-xs text-gray-400 mt-0.5">Near: ${order.Landmark}</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start text-gray-600">
-                                    <i class="fas fa-city mt-1 mr-3 text-gray-400 w-4"></i>
-                                    <p>${order.City}, ${order.State} - <span class="font-medium">${order.Pincode}</span></p>
-                                </div>
-                            </div>
-
-                        </div>
-                    `;
-                    orderContainer.innerHTML += cardHTML;
+                // Saare order memory mein save karna aur unko default 'Pending' dena
+                allOrders = data.map((order, index) => {
+                    return {
+                        ...order,
+                        originalIndex: index, // ID ke liye use hoga
+                        Status: order.Status || 'Pending' // Agar status nahi hai toh Pending mano
+                    };
                 });
+
+                renderOrders(); // Memory se render karo
             })
             .catch(error => {
                 refreshIcon.classList.remove('fa-spin');
                 orderContainer.innerHTML = `
-                    <div class="text-center py-20 text-red-500">
+                    <div class="text-center py-20 text-red-500 fade-in">
                         <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
                         <p>Data load karne mein error aayi.</p>
-                        <p class="text-xs mt-2 text-gray-400">${error.message}</p>
+                        <p class="text-xs mt-2 text-gray-400">Sheet check karein.</p>
                     </div>`;
             });
     }
 
-    // Page load hote hi data fetch karna
+    // Page start
     window.onload = fetchOrders;
 
 </script>

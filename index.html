@@ -69,7 +69,7 @@
     </div>
 
 <script>
-    // DHYAN DEIN: Google Apps Script URL Yahan Check Karein
+    // APNA GOOGLE SCRIPT URL YAHAN DAALEIN
     const scriptURL = 'https://script.google.com/macros/s/AKfycbw2Z-5nrbDkbhCxvRi7uuudnz1wkZi9Rz1gURfWUJUcLkZ5FPWUNVkN7XeC0GnO5TPk1A/exec';
     
     const orderContainer = document.getElementById('orderContainer');
@@ -78,7 +78,6 @@
     let allOrders = []; 
     let currentTab = 'Pending'; 
 
-    // TAB NUMBERS KO UPDATE KARNE WALA FUNCTION
     function updateCounts() {
         const pendingCount = allOrders.filter(o => o.Status === 'Pending').length;
         const confirmedCount = allOrders.filter(o => o.Status === 'Confirmed').length;
@@ -121,7 +120,19 @@
         return 'bg-gray-100 text-gray-700 border-gray-300';
     }
 
-    // Google Sheet mein update karne ka logic
+    // 🟢 YAHAN WHATSAPP MESSAGE UPDATE KIYA GAYA HAI (Tracking Link Ke Sath)
+    function sendWhatsApp(phone, name, orderId) {
+        let cleanPhone = phone.toString().replace(/\D/g, ''); 
+        if(cleanPhone.length === 10) { cleanPhone = '91' + cleanPhone; }
+
+        const trackLink = "https://shop.nexavibe.shop/track-order.html";
+
+        const message = `Dear *${name}*,\n\nThank you for shopping with NexaSelles! 🛍️\n\nYour order for the *3D HD Screen Magnifier* has been successfully confirmed.\n📦 *Order ID:* ${orderId}\n\n*Track your order live here:*\n👉 ${trackLink}\n\nOur team is packing your order, and it will be dispatched soon. We will notify you once it's out for delivery.\n\nBest Regards,\n*NexaSelles Team*`;
+        
+        const encodedMessage = encodeURIComponent(message);
+        window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
+    }
+
     function handleStatusChange(selectElement, arrayIndex, sheetRowIndex) {
         const newStatus = selectElement.value;
         const toast = document.getElementById('toastMessage');
@@ -141,8 +152,8 @@
         fetch(scriptURL, { method: 'POST', body: formData })
             .then(response => response.text())
             .then(result => {
-                allOrders[arrayIndex].Status = newStatus; // Local status update
-                updateCounts(); // Numbers update karo!
+                allOrders[arrayIndex].Status = newStatus; 
+                updateCounts(); 
                 
                 toastText.innerText = `Moved to ${newStatus}`;
                 toastIcon.className = "fas fa-check-circle text-green-400";
@@ -179,23 +190,30 @@
             let orderDate = new Date(order.Date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' });
             const badgeClass = getBadgeColor(order.ItemType);
             const statusColor = getStatusColor(order.Status);
+            
+            const orderIdDisplay = order.OrderID ? order.OrderID : 'No ID Found';
 
             const cardHTML = `
                 <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow relative fade-in">
                     
-                    <div class="flex justify-between items-start mb-3">
+                    <div class="flex justify-between items-center mb-2 pb-2 border-b border-gray-50">
+                        <span class="text-xs font-bold text-gray-400 tracking-wider">#${orderIdDisplay}</span>
+                        <span class="px-2 py-0.5 rounded bg-gray-100 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
+                            Row ${order.RowIndex}
+                        </span>
+                    </div>
+
+                    <div class="flex justify-between items-start mb-3 pt-1">
                         <div>
                             <h3 class="font-bold text-gray-900 text-lg">${order.Naam}</h3>
                             <p class="text-xs text-gray-400"><i class="far fa-clock mr-1"></i>${orderDate}</p>
                         </div>
-                        <span class="px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${badgeClass}">
+                        <span class="px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider mt-1 ${badgeClass}">
                             ${order.ItemType}
                         </span>
                     </div>
 
-                    <hr class="border-gray-50 my-3">
-
-                    <div class="space-y-2 text-sm mb-4">
+                    <div class="space-y-2 text-sm mb-4 mt-3">
                         <div class="flex items-start text-gray-600">
                             <i class="fas fa-phone-alt mt-1 mr-3 text-gray-400 w-4"></i>
                             <a href="tel:${order.Phone}" class="font-medium text-blue-600">${order.Phone}</a>
@@ -224,6 +242,10 @@
                         </select>
                     </div>
 
+                    <button onclick="sendWhatsApp('${order.Phone}', '${order.Naam}', '${orderIdDisplay}')" class="mt-2 w-full bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-bold py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95">
+                        <i class="fab fa-whatsapp text-base"></i> Send Confirmation
+                    </button>
+
                 </div>
             `;
             orderContainer.innerHTML += cardHTML;
@@ -245,7 +267,7 @@
                     };
                 });
                 
-                updateCounts(); // Numbers update karo!
+                updateCounts(); 
                 renderOrders(); 
             })
             .catch(error => {
